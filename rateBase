@@ -1,0 +1,55 @@
+import numpy as np
+
+class rateBase:
+  def __init__(self, n_per, init_bal, init_bal_decay, capex_rate, equity_pct, k_equity, k_debt, t_construct):
+    import numpy as np
+    
+    # *** ERROR HANDLING - check the shape of inputs
+    
+    def _vectorize_(self, x):
+      from numpy import isscalar
+      if isscalar(x) == True:
+        return self.zeros + x
+      else:
+        return x
+
+    # initialize objects
+    self.pers = tuple(np.arange(0,n_per))
+    self.pers_one = tuple(np.arange(1,n_per))
+    self.pers_one_minus_one = tuple(np.arange(1,n_per-1))
+    
+    self.period, self.zeros = np.arange(n_per), np.zeros(n_per)
+    self.value_bop, self.capex = np.zeros(n_per), np.zeros(n_per)
+    self.afudc, self.afudc_e, self.afudc_d = np.zeros(n_per), np.zeros(n_per), np.zeros(n_per)
+
+    self.value_bop[0] = init_bal
+    self.init_bal_decay = _vectorize_(self, init_bal_decay)
+    self.equity_pct = _vectorize_(self, equity_pct)
+    self.k_equity = _vectorize_(self, k_equity)
+    self.k_debt = _vectorize_(self, k_debt)
+    self.t_construct = _vectorize_(self, t_construct)
+    
+    # compute the retirements of initial rate base
+    self.init_bal_retirements = self.init_bal_decay * init_bal
+    for i in self.pers_one:
+        self.init_bal_retirements[i] += self.init_bal_retirements[i-1]
+        if self.init_bal_retirements[i] > init_bal:
+            self.init_bal_retirements[i] = init_bal
+            
+    # compute capex
+    for i in self.pers_one_minus_one:
+        self.capex[i] = self.value_bop[i] * capex_rate 
+        self.value_bop[i+1] = self.value_bop[i] + self.capex[i]
+            
+    self.afudc_e = self.capex * self.equity_pct * self.t_construct * self.k_equity
+    self.afudc_d = self.capex * ( 1 - self.equity_pct) * self.t_construct * self.k_debt
+    self.afudc = self.afudc_e + self.afudc_d
+    
+print(rateBase(n_per = 10, 
+               init_bal = 5,
+               init_bal_decay = .11,
+               capex_rate = .05, 
+               equity_pct = .45, 
+               k_equity = .1, 
+               k_debt = [.035, .035, .035, .035, .055, .055, .055, .035, .035, .035], 
+               t_construct = .5).k_debt) 
