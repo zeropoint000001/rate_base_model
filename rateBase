@@ -45,6 +45,10 @@ class rateBase:
     self.afudc_d = self.capex * ( 1 - self.equity_pct) * self.t_construct * self.k_debt
     self.afudc = self.afudc_e + self.afudc_d
     
+
+# add capability to enter a capex vector that supercedes the capex_rate vector
+#    add related ability to convert capex figures into pre-afudc values
+
 print(rateBase(n_per = 10, 
                init_bal = 5,
                init_bal_decay = .11,
