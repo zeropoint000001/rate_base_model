@@ -1,0 +1,18 @@
+import numpy as np
+def plant_at_cost(gross_plant, useful_life, n_per, capex):
+    pac, ul = gross_plant, useful_life
+    pac_bop = np.zeros([ul + n_per + 1, n_per+1])
+
+    for i in arange(0,ul+1):
+        pac_bop[i][0] = pac/ul
+
+    for j in arange(1,n_per+1):    
+        for i in arange(0,ul+n_per):
+            if i == 0 and j > 0:
+                pac_bop[i][j] = capex[j-1]
+            else:
+                pac_bop[i][j] = pac_bop[i-1][j-1]
+
+    return pac_bop
+
+#print(plant_at_cost(400, 40, 10, [5,6,7,8,9,10,11,12,13,14]))
