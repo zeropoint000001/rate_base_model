@@ -1,88 +1,157 @@
+import numpy as np
+
 class rateBase:
   def __init__(self, n_per, 
+               allowance, 
+               hist_per,
+               tax_rate_hist,
+               tax_rate_fwd,
+               bonus_dep_hist,
+               bonus_dep_fwd,
                init_bal, 
                init_gross_plant,
-               init_net_plant,
                useful_life,
-               retirements, 
                equity_pct, 
                k_equity, 
                k_debt, 
                t_construct, 
-               capex_forecast):
+               capex_forecast,
+               dep_fyf):
+    
     import numpy as np
+    import pandas as pd
     
     # *** ERROR HANDLING - check the shape of inputs
-    
-    runlog = "Initialized a rate base model of %d" % n_per +" periods with an initial balance of %d" % init_bal + "\n"
-    runlog += "\nRetirements of initial plant enetered for %d " % len(retirements) + " periods\n"+ str(retirements) + "\n"
-    runlog += "\nCapex forecast entered for %d" % len(capex_forecast) + " periods\n" + str(capex_forecast) + "\n"
-    runlog += "\nEquity capitalization entered for %d" % len(equity_pct) + " periods\n" + str(equity_pct) + "\n"
-    runlog += "\nCost of equity entered for %d" % len(k_equity) + " periods\n" + str(k_equity) + "\n"
-    runlog += "\nCost of debt entered for %d" % len(k_debt) + " periods\n" + str(k_debt) + "\n"
-    runlog += "\nAvg construction time forecast entered for %d" % len(t_construct) + " periods\n" + str(t_construct) + "\n"
     
     def _vectorize(self, x):
       if np.isscalar(x) == True:
         return self.zeros + x
       else:
-        return x      
-
+        return x 
+    
+    def build_matrix(self, past, fwd, n_per_back, n_per_fwd):
+        from numpy import arange
+        pm = np.zeros([n_per_back + n_per_fwd, n_per+1])
+        
+        for i in arange(0, len(past)):
+            pm[i, 0] = past[i]
+            
+        for j in arange(1,n_per_fwd+1):
+            for i in arange(0, n_per_back + n_per_fwd):
+                if i == 0 and j > 0:
+                    pm[i][j] = fwd[j-1]
+                else:
+                    pm[i][j] = pm[i-1][j-1]
+        return pm
+        
     # initialize objects
     self.pers = tuple(np.arange(0,n_per))
+    self.persp = tuple(np.arange(0,n_per+1))
     self.pers_one = tuple(np.arange(1,n_per))
+    self.persp_one = tuple(np.arange(1,n_per+1))
     self.pers_one_minus_one = tuple(np.arange(1,n_per-1))
     
     self.period, self.zeros = np.arange(n_per), np.zeros(n_per)
-    self.value_bop, self.capex, self.rate_base = np.zeros(n_per), np.zeros(n_per), np.zeros(n_per)
+    self.value_bop, self.capex, self.rate_base = np.zeros(n_per), np.zeros(n_per), np.zeros(n_per+1)
     self.legacy_plant_bop, self.legacy_plant_eop, self.legacy_dep = np.zeros(n_per), np.zeros(n_per), np.zeros(n_per)
     self.afudc, self.afudc_e, self.afudc_d = np.zeros(n_per), np.zeros(n_per), np.zeros(n_per)
 
+    # calculate legacy plant
+    self.pac_eop = build_matrix(self, init_gross_plant, capex_forecast, hist_per, n_per)
+    
+    # calculate bonus matrix
+    self.tax_rate = build_matrix(self, tax_rate_hist, tax_rate_fwd, hist_per, n_per)
+    
+    # calculate tax matrix
+    self.bonus_dep = build_matrix(self, bonus_dep_hist, bonus_dep_fwd, hist_per, n_per)
+    
+    runlog = "Initialized a rate base model of %d" % n_per +" periods with an initial balance of %d" % init_bal + "\n"
+    runlog += "\nPlant at cost entered in %d" % len(init_gross_plant) + " age buckets\n" + str(init_gross_plant) + "\n"
+    runlog += "\nCapex forecast entered for %d" % len(capex_forecast) + " periods\n" + str(capex_forecast) + "\n"
+    runlog += "\nEquity capitalization entered for %d" % len(equity_pct) + " periods\n" + str(equity_pct) + "\n"
+    runlog += "\nCost of equity entered for %d" % len(k_equity) + " periods\n" + str(k_equity) + "\n"
+    runlog += "\nCost of debt entered for %d" % len(k_debt) + " periods\n" + str(k_debt) + "\n"
+    runlog += "\nAvg construction time forecast entered for %d" % len(t_construct) + " periods\n" + str(t_construct) + "\n"
+    runlog += "\nPlant at cost computed across the forecast period, from initial balance to final period eop:\n" + str(self.pac_eop)
+    
+    self.gross_plant = np.zeros(n_per + 1)
+    for i in self.persp:
+        self.gross_plant[i] = sum(self.pac_eop[:,i])
+    
+    self.dep_exp_book = np.zeros(n_per + 1)
+    for j in self.persp:
+        i = 0
+        for c in self.pac_eop[:,j]:
+            self.dep_exp_book[j] += straight_line(useful_life, dep_fyf, i+1) * c
+            i += 1
+            
+    self.dep_acc_book = np.zeros(n_per + 1)
+    for j in self.persp:
+        i = 0
+        for c in self.pac_eop[:,j]:
+            for t in np.arange(1, i + 2):
+                self.dep_acc_book[j] += straight_line(useful_life, dep_fyf, t) * c
+            i += 1
+    
+    self.dep_exp_tax = np.zeros(n_per + 1)
+    for j in self.persp:
+        i = 0
+        for c in self.pac_eop[:,j]:
+            self.dep_exp_tax[j] += macrs(useful_life, dep_fyf, self.bonus_dep[i, j], i+1) * c
+            i += 1
+            
+    self.dep_acc_tax = np.zeros(n_per + 1)
+    for j in self.persp:
+        i = 0
+        for c in self.pac_eop[:,j]:
+            for t in np.arange(1, i + 2):
+                self.dep_acc_tax[j] += macrs(useful_life, dep_fyf, self.bonus_dep[i, j], t) * c
+            i += 1
+            
+    self.adit = np.zeros(n_per + 1)
+    for j in self.persp:
+        i = 0
+        for c in self.pac_eop[:,j]:
+            for t in np.arange(1, i + 2):
+                self.adit[j] += (macrs(useful_life, dep_fyf, self.bonus_dep[i, j], t) 
+                                         - straight_line(useful_life, dep_fyf, t)) * c * self.tax_rate[i, j]
+            i += 1
+            
     self.value_bop[0] = init_bal
-    self.retirements = retirements
     self.equity_pct = _vectorize(self, equity_pct)
     self.k_equity = _vectorize(self, k_equity)
     self.k_debt = _vectorize(self, k_debt)
     self.t_construct = _vectorize(self, t_construct)
     self.capex = capex_forecast
             
-    # calculate AFUDC
-    for i in self.pers:
-        self.afudc_e[i] = self.capex[i] * self.equity_pct[i] * self.t_construct[i] * self.k_equity[i]
-        self.afudc_d[i] = self.capex[i] * ( 1 - self.equity_pct[i]) * self.t_construct[i] * self.k_debt[i]
-        self.afudc[i] = self.afudc_e[i] + self.afudc_d[i]
+    for i in self.persp:
+        self.rate_base[i] = self.gross_plant[i] - self.dep_acc_book[i] - self.adit[i]
     
-    # calculate legacy plant
-    self.legacy_plant_bop[0] = init_gross_plant
-    self.legacy_plant_eop[0] = init_gross_plant - self.retirements[0]
-    for i in self.pers_one:
-        self.legacy_plant_bop[i] = self.legacy_plant_eop[i-1] 
-        self.legacy_plant_eop[i] = self.legacy_plant_bop[i] - self.retirements[i]
-        
-    # calculate depreciation
-    for i in self.pers:
-        self.legacy_dep[i] = ((self.legacy_plant_bop[i] + self.legacy_plant_eop[i])/2) * 1/useful_life
+    #print(runlog)
     
-      
-    # calculate rate base
-    self.rate_base[0] = self.value_bop[0] + self.capex[0] + self.afudc[0]
-    for i in self.pers_one:
-        self.rate_base[i] = self.rate_base[i-1] + self.capex[i] + self.afudc[i]
+    self.dict = {"gross_plant": self.gross_plant, 
+                 "acc_dep": self.dep_acc_book, 
+                 "net plant": self.gross_plant - self.dep_acc_book,
+                 "adit": self.adit, 
+                 "rate base": self.rate_base}
     
-    print(runlog)
+    self.df = pd.DataFrame(self.dict, columns = self.dict.keys())
     
-print(rateBase(n_per = 10, 
-               init_bal = 5,
-               init_gross_plant = 10,
-               init_net_plant = 5,
-               useful_life = 40,
-               retirements = [.11, .11, .11, .11, .11, .11, .11, .11, .11, .11],
-               capex_forecast = [.25, .25, .25, .25, .25, .25, .25, .25, .25, .25], 
-               equity_pct = [.45, .45, .45, .45, .45, .45, .45, .45, .45, .45], 
-               k_equity = [.1, .1, .1, .1, .1, .1, .1, .1, .1, .1], 
-               k_debt = [.035, .035, .035, .035, .055, .055, .055, .035, .035, .035], 
-               t_construct = [.5, .5, .5, .5, .5, .5, .5, .5, .5, .5]).legacy_dep)   
+rb = rateBase(n_per = 10,
+              allowance = 0,
+              hist_per = 20,
+              tax_rate_hist = [.35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35],
+              tax_rate_fwd = [.35, .2, .2, .2, .2, .2, .2, .2, .2, .2, .2],
+              bonus_dep_hist = [.6, .7, .7, 0],
+              bonus_dep_fwd = [.5, .4, .3, 0, 0, 0, 0, 0, 0, 0, 0], 
+              init_bal = 5,
+              init_gross_plant = [39,40,40,40,40,40,41,40,40,40,40,40,40,40,40,40],
+              capex_forecast = [40, 40, 40, 40, 40, 40, 40, 40, 40, 40], 
+              useful_life = 40,
+              equity_pct = [.45, .45, .45, .45, .45, .45, .45, .45, .45, .45],
+              k_equity = [.1, .1, .1, .1, .1, .1, .1, .1, .1, .1],
+              k_debt = [.035, .035, .035, .035, .055, .055, .055, .035, .035, .035],
+              t_construct = [.5, .5, .5, .5, .5, .5, .5, .5, .5, .5],
+              dep_fyf = .5)
 
-
-#print(rateBase(10, 5, .05, .45, .1, .035, .5).capex) 
-#print(rateBase(10, 5, .05, .45, .1, .035, .5).afudc)
+#print(rb.df)
