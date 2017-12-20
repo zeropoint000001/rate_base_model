@@ -1,4 +1,93 @@
-import numpy as np
+# TAX DEPRECIATION
+# ----------------------------------------------------------------------------------------------------------------------------------
+#
+# inteded as an approximation of macrs as represented by the IRS here https://www.irs.gov/publications/p946
+# return an estimate of the macrs depreciation for a given useful life
+# the macrs formula takes four arguments -- useful_life, first_year_fraction, bonus, and year
+#    useful_life: useful life of the asset -- integer (between 3 and 40)
+#    first_year_fraction: portion of first year during which the asset was in service -- float (between 0 and 1)
+#    bonus_depreciation: deduction taken in first year -- float (between 0 and 1)
+#    year: year index for which to return -- integer (between 0 and useful_life), if 0 then the full macrs vector is returned
+#
+# EXAMPLE: macrs(20, .5, .5, 1) returns the first year's depreciation for an asset of 20 yrs useful life 
+#          placed in service mid-year with 50% bonus depreciation
+# EXAMPLE: macrs(20, .5, .5, 1) returns the entire depreciation vector for an asset of 20 yrs useful life 
+#          placed in service mid-year with 50% bonus depreciation
+
+def macrs(useful_life, first_year_fraction, bonus, year):
+    import numpy as np
+    ul, fyf, yr, b = useful_life, first_year_fraction, year, bonus
+    t = np.arange(0,ul+1)
+    np, ddd, sld, ed, md = [], [], [], [], []
+    np.append(1*(1-b))
+ 
+    for i in t:
+        ddd.append(2*np[i]/ul)
+ 
+        if i < ul:
+            sld.append(np[i]/(ul-i))
+        else:
+            sld.append(0)
+ 
+        y = ddd[i] if ddd[i] >= sld[i] else sld[i]
+        ed.append(y)
+        np_next = np[i] - ed[i]
+        np.append(np_next)
+ 
+        if i == 0:
+            md.append(0+fyf*ed[i])
+        else:
+            md.append((1-fyf)*ed[i-1]+fyf*ed[i])
+            
+    md[0] = md[0] + b
+ 
+    if yr == 0:
+        return md
+    else:
+        return md[yr-1]
+        
+
+# ----------------------------------------------------------------------------------------------------------------------------------
+# BOOK DEPRECIATION
+# ----------------------------------------------------------------------------------------------------------------------------------
+# return the straight-line depreciation for a given useful life
+# the straight_line formula takes three arguments -- useful_life, first_year_fraction, and year
+#    useful_life: useful life of the asset -- integer (between 3 and 40)
+#    first_year_fraction: portion of first year during which the asset was in service -- float (between 0 and 1)
+#    year: year index for which to return -- integer (between 0 and useful_life), if 0 then the full macrs vector is returned
+#
+# EXAMPLE: straight_line(20, .5, 1) returns the first year's depreciation for an asset of 20 yrs useful life place in service mid-year
+# EXAMPLE: straight_line(20, .5, 0) returns the entire depreciation vector for an asset of 20 yrs useful life place in service mid-year
+
+def straight_line(useful_life, first_year_fraction, year):
+    import numpy as np
+    ul, fyf, yr = useful_life, first_year_fraction, year
+    
+    np = np.repeat(1,ul+1)
+    np = np/ul
+    np[0] = np[0]*fyf
+    np[ul] = np[ul]*(1-fyf)
+ 
+    if yr == 0:
+        return np
+    else:
+        return np[year-1]
+        
+# ----------------------------------------------------------------------------------------------------------------------------------
+# DEFERRED TAXES
+# ----------------------------------------------------------------------------------------------------------------------------------
+
+def deferred_taxes(useful_life, first_year_fraction, bonus, tr, year):
+    ul, fyf, b, yr = useful_life, first_year_fraction, bonus, year
+    dt = (macrs(ul, fyf, b, 0) - straight_line(ul, fyf, 0)) * tr 
+    if yr == 0:
+        return dt 
+    else:
+        return dt[yr-1]
+
+# ----------------------------------------------------------------------------------------------------------------------------------
+# RATE BASE CLASS
+# ----------------------------------------------------------------------------------------------------------------------------------
 
 class rateBase:
   def __init__(self, n_per, 
