@@ -89,7 +89,7 @@ def deferred_taxes(useful_life, first_year_fraction, bonus, tr, year):
 # RATE BASE CLASS
 # ----------------------------------------------------------------------------------------------------------------------------------
 
-class rateBase:
+class rate_base:
   def __init__(self, n_per, 
                allowance, 
                hist_per,
@@ -226,7 +226,7 @@ class rateBase:
     
     self.df = pd.DataFrame(self.dict, columns = self.dict.keys())
     
-rb = rateBase(n_per = 10,
+rb = rate_base(n_per = 10,
               allowance = 0,
               hist_per = 20,
               tax_rate_hist = [.35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35, .35],
